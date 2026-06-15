@@ -50,3 +50,10 @@ resource "aws_instance" "bastion" {
     volume_type = "gp3"
   }
 }
+
+# Elastic IP — fixed public IP that persists across stop/start
+resource "aws_eip" "bastion" {
+  instance   = aws_instance.bastion.id
+  domain     = "vpc"
+  depends_on = [aws_internet_gateway.main]
+}

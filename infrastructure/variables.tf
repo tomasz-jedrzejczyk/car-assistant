@@ -37,5 +37,5 @@ variable "db_password" {
 variable "developer_ip" {
   description = "Developer IP address for bastion SSH access"
   type        = string
-  default     = "83.7.144.234/32"
+  default     = "83.7.145.232/32"
 }
