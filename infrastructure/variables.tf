@@ -39,3 +39,9 @@ variable "developer_ip" {
   type        = string
   default     = "83.7.145.232/32"
 }
+
+variable "anthropic_api_key" {
+  description = "Anthropic Claude API key"
+  type        = string
+  sensitive   = true
+}

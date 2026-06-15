@@ -5,3 +5,4 @@ pydantic
 python-dotenv
 anthropic
 boto3
+mangum

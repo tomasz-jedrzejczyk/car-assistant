@@ -49,6 +49,11 @@ output "db_username" {
 }
 
 output "bastion_public_ip" {
-  description = "Bastion host public IP — use this in DBeaver SSH tunnel"
-  value       = aws_instance.bastion.public_ip
+  description = "Bastion host Elastic IP — stays same after stop/start"
+  value       = aws_eip.bastion.public_ip
+}
+
+output "api_url" {
+  description = "API Gateway URL — use this to call the API"
+  value       = aws_apigatewayv2_stage.main.invoke_url
 }
