@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from contextlib import asynccontextmanager
 from datetime import datetime
 from uuid import UUID
@@ -10,11 +11,13 @@ from models import (
     UserCreate, UserResponse,
     CarCreate, CarResponse,
     NoteCreate, NoteResponse,
+    VoiceNoteResponse, TranscriptionStatusResponse,
     MaintenanceEventCreate, MaintenanceEventResponse,
     AIResponseModel, HealthCheckResponse
 )
 from database import db
 from claude_service import get_claude_service
+from transcribe_service import upload_audio_to_s3, start_transcription_job, get_transcription_status
 
 load_dotenv()
 
@@ -204,6 +207,97 @@ async def list_car_notes(car_id: UUID):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/notes/voice", response_model=VoiceNoteResponse)
+async def create_voice_note(car_id: UUID, audio_file: UploadFile = File(...)):
+    """
+    Upload a voice note. Starts async transcription.
+    Returns immediately — check status with GET /notes/{id}/status
+    """
+    try:
+        # Read the audio file
+        audio_bytes = await audio_file.read()
+        file_extension = audio_file.filename.split(".")[-1] if audio_file.filename else "mp3"
+        
+        # Upload to S3
+        s3_key = upload_audio_to_s3(audio_bytes, file_extension)
+        
+        # Start transcription job
+        job_name = start_transcription_job(s3_key)
+        
+        # Create note record with 'pending' status — content filled in later
+        query = """
+            INSERT INTO notes (car_id, note_type, category, content, recorded_at, 
+                                transcription_status, audio_s3_key, transcribe_job_name)
+            VALUES (%s, 'voice', 'other', '', NOW(), 'processing', %s, %s)
+            RETURNING id, car_id, note_type, transcription_status, transcribe_job_name, created_at
+        """
+        result = db.execute_insert(query, (str(car_id), s3_key, job_name))
+        
+        if not result:
+            raise HTTPException(status_code=400, detail="Failed to create voice note")
+        
+        return result
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/notes/{note_id}/status", response_model=TranscriptionStatusResponse)
+async def check_transcription_status(note_id: UUID):
+    """
+    Check if a voice note's transcription is complete.
+    If complete, updates the database and returns the transcript.
+    """
+    try:
+        # Get the note
+        query = "SELECT id, transcription_status, transcribe_job_name, content FROM notes WHERE id = %s"
+        result = db.execute_query(query, (str(note_id),))
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        note = result[0]
+        
+        # If already completed, just return it
+        if note["transcription_status"] == "completed":
+            return note
+        
+        # Check AWS Transcribe job status
+        job_status = get_transcription_status(note["transcribe_job_name"])
+        
+        if job_status["status"] == "completed":
+            # Update the note with the transcript
+            update_query = """
+                UPDATE notes 
+                SET content = %s, transcription_status = 'completed'
+                WHERE id = %s
+                RETURNING id, transcription_status, content
+            """
+            updated = db.execute_insert(update_query, (job_status["transcript"], str(note_id)))
+            return updated
+        
+        elif job_status["status"] == "failed":
+            update_query = """
+                UPDATE notes 
+                SET transcription_status = 'failed'
+                WHERE id = %s
+                RETURNING id, transcription_status, content
+            """
+            updated = db.execute_insert(update_query, (str(note_id),))
+            return updated
+        
+        else:
+            # Still processing
+            return {
+                "id": note["id"],
+                "transcription_status": "processing",
+                "content": None
+            }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ─── Maintenance Event Endpoints ──────────────────────────────
 
