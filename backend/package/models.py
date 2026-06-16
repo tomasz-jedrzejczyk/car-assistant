@@ -71,6 +71,25 @@ class NoteResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class VoiceNoteResponse(BaseModel):
+    """Response after uploading a voice note"""
+    id: UUID
+    car_id: UUID
+    note_type: str
+    transcription_status: str
+    transcribe_job_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TranscriptionStatusResponse(BaseModel):
+    """Response when checking transcription status"""
+    id: UUID
+    transcription_status: str
+    content: Optional[str] = None        
+
 
 # ─── Maintenance Event Models ─────────────────────────────────
 
