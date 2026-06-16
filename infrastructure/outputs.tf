@@ -57,3 +57,8 @@ output "api_url" {
   description = "API Gateway URL — use this to call the API"
   value       = aws_apigatewayv2_stage.main.invoke_url
 }
+
+output "voice_notes_bucket" {
+  description = "S3 bucket for voice note audio files"
+  value       = aws_s3_bucket.voice_notes.id
+}

@@ -34,6 +34,25 @@ resource "aws_iam_role_policy_attachment" "lambda_transcribe" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonTranscribeFullAccess"
 }
 
+# Allow Lambda to read/write the voice notes S3 bucket
+resource "aws_iam_role_policy" "lambda_s3" {
+  name = "${var.project_name}-lambda-s3-${var.environment}"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ]
+      Resource = "${aws_s3_bucket.voice_notes.arn}/*"
+    }]
+  })
+}
+
 # ─── Lambda Security Group ────────────────────────────────────
 # Lambda needs its own security group to talk to RDS
 
@@ -78,6 +97,7 @@ resource "aws_lambda_function" "api" {
       DB_PASSWORD         = var.db_password
       ANTHROPIC_API_KEY   = var.anthropic_api_key
       AWS_REGION_NAME     = var.aws_region
+      S3_BUCKET_NAME      = aws_s3_bucket.voice_notes.id
     }
   }
 
