@@ -13,6 +13,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "voice_notes" {
     id     = "expire-old-audio"
     status = "Enabled"
 
+    filter {}
+
     expiration {
       days = 7
     }
