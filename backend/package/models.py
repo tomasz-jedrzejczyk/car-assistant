@@ -155,3 +155,13 @@ class HealthCheckResponse(BaseModel):
     status: str
     database: str
     message: str
+
+class PresignedUrlResponse(BaseModel):
+    """Presigned S3 URL for direct audio upload"""
+    upload_url: str
+    s3_key: str
+
+class StartTranscriptionRequest(BaseModel):
+    """Request to start transcription after audio is uploaded to S3"""
+    s3_key: str
+    category: Optional[str] = "other"

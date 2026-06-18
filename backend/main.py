@@ -1,25 +1,24 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends
 from contextlib import asynccontextmanager
 from datetime import datetime
 from uuid import UUID
 import os
-from dotenv import load_dotenv
 
 from models import (
     UserCreate, UserResponse,
     CarCreate, CarResponse,
     NoteCreate, NoteResponse,
-    VoiceNoteResponse, TranscriptionStatusResponse,
     MaintenanceEventCreate, MaintenanceEventResponse,
-    AIResponseModel, HealthCheckResponse
+    AIResponseModel, HealthCheckResponse,
+    VoiceNoteResponse, TranscriptionStatusResponse,
+    PresignedUrlResponse, StartTranscriptionRequest
 )
 from database import db
 from claude_service import get_claude_service
 from transcribe_service import upload_audio_to_s3, start_transcription_job, get_transcription_status
 
-load_dotenv()
 
 # ─── Startup and Shutdown ─────────────────────────────────────
 
@@ -207,31 +206,45 @@ async def list_car_notes(car_id: UUID):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/notes/voice", response_model=VoiceNoteResponse)
-async def create_voice_note(car_id: UUID, audio_file: UploadFile = File(...)):
+@app.get("/notes/voice/upload-url", response_model=PresignedUrlResponse)
+async def get_voice_upload_url(file_extension: str = "m4a"):
     """
-    Upload a voice note. Starts async transcription.
-    Returns immediately — check status with GET /notes/{id}/status
+    Step 1: Get a presigned URL to upload audio directly to S3.
+    The client uploads the file directly — no size limits, no Lambda involvement.
     """
     try:
-        # Read the audio file
-        audio_bytes = await audio_file.read()
-        file_extension = audio_file.filename.split(".")[-1] if audio_file.filename else "mp3"
-        
-        # Upload to S3
-        s3_key = upload_audio_to_s3(audio_bytes, file_extension)
+        from transcribe_service import generate_presigned_upload_url
+        result = generate_presigned_upload_url(file_extension)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/notes/voice", response_model=VoiceNoteResponse)
+async def create_voice_note(car_id: UUID, request: StartTranscriptionRequest):
+    """
+    Step 2: After uploading audio to S3, call this to start transcription.
+    Returns immediately with note_id and status: processing.
+    """
+    try:
+        from transcribe_service import start_transcription_job
         
         # Start transcription job
-        job_name = start_transcription_job(s3_key)
+        job_name = start_transcription_job(request.s3_key)
         
-        # Create note record with 'pending' status — content filled in later
+        # Create note record with processing status
         query = """
-            INSERT INTO notes (car_id, note_type, category, content, recorded_at, 
+            INSERT INTO notes (car_id, note_type, category, content, recorded_at,
                                 transcription_status, audio_s3_key, transcribe_job_name)
-            VALUES (%s, 'voice', 'other', '', NOW(), 'processing', %s, %s)
+            VALUES (%s, 'voice', %s, '', NOW(), 'processing', %s, %s)
             RETURNING id, car_id, note_type, transcription_status, transcribe_job_name, created_at
         """
-        result = db.execute_insert(query, (str(car_id), s3_key, job_name))
+        result = db.execute_insert(
+            query,
+            (str(car_id), request.category, request.s3_key, job_name)
+        )
         
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create voice note")

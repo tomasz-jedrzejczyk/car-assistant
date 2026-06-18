@@ -3,9 +3,7 @@ from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 from typing import Generator
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
 
 # ─── Database Configuration ───────────────────────────────────
 

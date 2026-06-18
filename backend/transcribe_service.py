@@ -27,18 +27,19 @@ def upload_audio_to_s3(audio_bytes: bytes, file_extension: str = "mp3") -> str:
 
 
 def start_transcription_job(s3_key: str) -> str:
-    """
-    Start an async AWS Transcribe job for the uploaded audio.
-    Returns the job name — used later to check status.
-    """
     job_name = f"transcribe-{uuid.uuid4()}"
     media_uri = f"s3://{S3_BUCKET}/{s3_key}"
+    
+    # Map file extensions to Transcribe media formats
+    format_map = {"m4a": "mp4", "mp3": "mp3", "wav": "wav", "mp4": "mp4", "ogg": "ogg", "flac": "flac"}
+    file_ext = s3_key.split(".")[-1].lower()
+    media_format = format_map.get(file_ext, "mp3")
     
     transcribe_client.start_transcription_job(
         TranscriptionJobName=job_name,
         Media={"MediaFileUri": media_uri},
-        MediaFormat=s3_key.split(".")[-1],  # mp3, wav, etc
-        LanguageCode="en-US",  # Could be made dynamic later
+        MediaFormat=media_format,
+        LanguageCode="en-US",
         OutputBucketName=S3_BUCKET,
         OutputKey=f"transcripts/{job_name}.json"
     )
@@ -75,3 +76,34 @@ def get_transcription_status(job_name: str) -> dict:
         result["error"] = job.get("FailureReason", "Unknown error")
     
     return result
+
+ALLOWED_AUDIO_EXTENSIONS = {"m4a", "mp3", "wav", "mp4", "ogg", "flac"}
+
+def generate_presigned_upload_url(file_extension: str = "m4a") -> dict:
+    """
+    Generate a presigned S3 URL for direct audio upload from client.
+    Only allows audio file types — rejects anything else.
+    URL expires in 5 minutes.
+    """
+    # Security: validate file extension
+    ext = file_extension.lower().strip(".")
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        raise ValueError(f"File type '{ext}' not allowed. Must be one of: {ALLOWED_AUDIO_EXTENSIONS}")
+    
+    s3_key = f"voice-notes/{uuid.uuid4()}.{ext}"
+    
+    presigned_url = s3_client.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": S3_BUCKET,
+            "Key": s3_key,
+            "ContentType": f"audio/{ext}",
+            "ServerSideEncryption": "AES256"
+        },
+        ExpiresIn=300  # 5 minutes
+    )
+    
+    return {
+        "upload_url": presigned_url,
+        "s3_key": s3_key
+    }
