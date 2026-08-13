@@ -1,0 +1,36 @@
+# ─── Secrets ─────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# ─── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+
+# ─── Lambda packaging artifacts ──────────────────────────
+backend/package/
+*.zip
+
+# ─── Terraform ───────────────────────────────────────────
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+*.tfvars
+*.tfvars.json
+
+# ─── Databases ───────────────────────────────────────────
+*.sqlite3
+*.db
+
+# ─── IDE / OS ────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
